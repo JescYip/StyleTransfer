@@ -14,9 +14,7 @@ import datetime
 from dataLoader import dataset_dict
 import sys
 
-
-
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "CPU")
 
 renderer = OctreeRender_trilinear_fast
 
