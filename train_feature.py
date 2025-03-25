@@ -9,7 +9,7 @@ from opt import config_parser
 import json, random
 from renderer import *
 from utils import *
-from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter
 from torchvision.utils import make_grid
 import torchvision.transforms.functional as TF
 import datetime
