@@ -173,7 +173,9 @@ def reconstruction(args):
 
     torch.cuda.empty_cache()
 
-    allrays_stack, allrgbs_stack = train_dataset.all_rays_stack, train_dataset.all_rgbs_stack
+    allrays_stack = train_dataset.all_rays_stack.to(device)
+    allrgbs_stack = train_dataset.all_rgbs_stack.to(device)
+    
     frameSampler = iter(InfiniteSamplerWrapper(allrays_stack.size(0))) # every next(sampler) returns a frame index
 
     pbar = tqdm(range(args.n_iters), miniters=args.progress_refresh_rate, file=sys.stdout)
