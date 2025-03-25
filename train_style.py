@@ -9,7 +9,7 @@ import torchvision.transforms.functional as TF
 
 from renderer import *
 from utils import *
-from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter
 import datetime
 
 from dataLoader import dataset_dict
