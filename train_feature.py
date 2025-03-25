@@ -161,8 +161,10 @@ def reconstruction(args):
 
     torch.cuda.empty_cache()
     PSNRs = []
+    
+    allrays = train_dataset.all_rays.to(device)
+    allfeatures = train_dataset.all_features.to(device)
 
-    allrays, allfeatures = train_dataset.all_rays, train_dataset.all_features
     allrays_stack, allrgbs_stack = train_dataset.all_rays_stack, train_dataset.all_rgbs_stack
     if not args.ndc_ray:
         allrays, allfeatures = tensorf.filtering_rays(allrays, allfeatures, bbox_only=True)
