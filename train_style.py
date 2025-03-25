@@ -19,9 +19,7 @@ from models.styleModules import cal_mse_content_loss, cal_adain_style_loss
 
 import sys
 
-
-
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 renderer = OctreeRender_trilinear_fast
 depth_renderer = OctreeRender_trilinear_fast_depth
