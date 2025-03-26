@@ -10,12 +10,14 @@ def config_parser(cmd=None):
                         help='where to store ckpts and logs')
     parser.add_argument("--add_timestamp", type=int, default=0,
                         help='add timestamp to dir')
-    parser.add_argument("--datadir", type=str, default='./data/llff/fern',
+    parser.add_argument("--datadir", type=str, default='./data/nerf_llff_data/fern',
                         help='input data directory')
     parser.add_argument("--wikiartdir", type=str, default='./data/WikiArt',
                         help='input data directory')
     parser.add_argument("--progress_refresh_rate", type=int, default=10,
                         help='how many iterations to show psnrs or iters')
+    parser.add_argument('--style_loss_mode', type=str, default='adain', choices=['adain', 'gram'], 
+                        help='Selecting the type of stylistic loss')
 
     parser.add_argument('--with_depth', action='store_true')
     parser.add_argument('--downsample_train', type=float, default=1.0)
