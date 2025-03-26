@@ -18,6 +18,24 @@ from dataLoader.styleLoader import getDataLoader
 from models.styleModules import cal_mse_content_loss, cal_adain_style_loss
 
 import sys
+import torch.nn.functional as F
+
+from torchvision import models
+def gram_matrix(feat):
+    b, c, h, w = feat.size()
+    feat = feat.view(b, c, h * w)
+    G = torch.bmm(feat, feat.transpose(1, 2))
+    return G / (c * h * w)
+
+def gram_style_loss(style_features, image_features):
+    loss = 0.
+    for style_feat, img_feat in zip(style_features, image_features):
+        Gs = gram_matrix(style_feat)
+        Gi = gram_matrix(img_feat)
+        loss += F.mse_loss(Gs, Gi)
+    return loss
+
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -227,25 +245,29 @@ def reconstruction(args):
             content_loss = cal_mse_content_loss(torch.masked_select(content_feature.relu4_1, _mask), 
                                                 torch.masked_select(out_image_feature.relu4_1, _mask))
             # style loss
-            style_loss = 0.
-            for style_feature, image_feature in zip(style_feature, out_image_feature):
-                _mask = F.interpolate(mask, size=image_feature.size()[-2:], mode='bilinear').ge(1e-5)
-                C = image_feature.size()[1]
-                masked_img_feature = torch.masked_select(image_feature, _mask).reshape(1,C,-1)
-                style_loss += cal_adain_style_loss(style_feature, masked_img_feature)
+            if args.style_loss_mode == 'gram':
+                style_loss = gram_style_loss(style_feature, out_image_feature)
+            else:            
+                style_loss = 0.
+                for style_feature, image_feature in zip(style_feature, out_image_feature):
+                    _mask = F.interpolate(mask, size=image_feature.size()[-2:], mode='bilinear').ge(1e-5)
+                    C = image_feature.size()[1]
+                    masked_img_feature = torch.masked_select(image_feature, _mask).reshape(1,C,-1)
+                    style_loss += cal_adain_style_loss(style_feature, masked_img_feature)
 
-            content_loss *= args.content_weight
-            style_loss *= args.style_weight
         else:
             # content loss
             content_loss = cal_mse_content_loss(content_feature.relu4_1, out_image_feature.relu4_1)
             # style loss
-            style_loss = 0.
-            for style_feature, image_feature in zip(style_feature, out_image_feature):
-                style_loss += cal_adain_style_loss(style_feature, image_feature)
+            if args.style_loss_mode == 'gram':
+                style_loss = gram_style_loss(style_feature, out_image_feature)
+            else:
+                style_loss = 0.
+                for style_feature, image_feature in zip(style_feature, out_image_feature):
+                    style_loss += cal_adain_style_loss(style_feature, image_feature)
 
-            content_loss *= args.content_weight
-            style_loss *= args.style_weight
+        content_loss *= args.content_weight
+        style_loss *= args.style_weight
 
         feature_tv_loss = tvreg(feature_map) * args.featuremap_tv_weight
         image_tv_loss = tvreg(denormalize_vgg(rgb_map)) * args.image_tv_weight
@@ -290,6 +312,8 @@ if __name__ == '__main__':
     args = config_parser()
     print(args)
 
+    if not hasattr(args, 'style_loss_mode'):
+        args.style_loss_mode = 'adain'  # 默认值
     if args.render_only:
         render_test(args)
     else:
