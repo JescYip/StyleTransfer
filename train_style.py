@@ -112,15 +112,15 @@ def render_test(args):
         os.makedirs(f'{logfolder}/{args.expname}/imgs_train_all/{style_name}', exist_ok=True)
         evaluation_feature(train_dataset,tensorf, args, renderer, args.chunk_size, f'{logfolder}/{args.expname}/imgs_train_all/{style_name}',
                                 N_vis=-1, N_samples=-1, white_bg = train_dataset.white_bg, ndc_ray=ndc_ray, style_img=style_img, device=device)
-    
+
     if args.render_test:
-        test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True)
+        test_dataset = dataset(args.datadir, split='train', downsample=args.downsample_test, is_stack=True)  # ✅ FIXED: 加了 is_stack
         os.makedirs(f'{logfolder}/{args.expname}/imgs_test_all/{style_name}', exist_ok=True)
-        evaluation_feature(test_dataset,tensorf, args, renderer, args.chunk_size, f'{logfolder}/{args.expname}/imgs_test_all/{style_name}',
+        evaluation_feature(test_dataset, tensorf, args, renderer, args.chunk_size, f'{logfolder}/{args.expname}/imgs_test_all/{style_name}',
                                 N_vis=-1, N_samples=-1, white_bg = test_dataset.white_bg, ndc_ray=ndc_ray, style_img=style_img, device=device)
 
     if args.render_path:
-        test_dataset = dataset(args.datadir, split='test', downsample=args.downsample_train, is_stack=True)
+        test_dataset = dataset(args.datadir, split='train', downsample=args.downsample_test, is_stack=True)  # ✅ FIXED
         c2ws = test_dataset.render_path
         os.makedirs(f'{logfolder}/{args.expname}/imgs_path_all/{style_name}', exist_ok=True)
         evaluation_feature_path(test_dataset, tensorf, c2ws, renderer, args.chunk_size, f'{logfolder}/{args.expname}/imgs_path_all/{style_name}',

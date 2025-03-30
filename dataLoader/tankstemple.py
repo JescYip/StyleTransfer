@@ -193,28 +193,50 @@ class TanksTempleDataset(Dataset):
             self.all_rgbs_stack = torch.stack(all_rgbs, 0).reshape(-1,*self.img_wh[::-1], 3)  # (len(self.meta['frames]),h,w,3)
 
     @torch.no_grad()
-    def prepare_feature_data(self, encoder, chunk=4):
+    def prepare_feature_data(self, encoder, chunk=1, save_dir='./feature_cache'):
         '''
-        Prepare feature maps as training data.
+        Prepare feature maps as training data, saved to disk to avoid RAM explosion.
         '''
-        assert self.is_stack, 'Dataset should contain original stacked taining data!'
+        assert self.is_stack, 'Dataset should contain original stacked training data!'
         print('====> prepare_feature_data ...')
 
+        os.makedirs(save_dir, exist_ok=True)
         frames_num, h, w, _ = self.all_rgbs_stack.size()
+
+        for frame_idx in range(frames_num):
+            save_path = os.path.join(save_dir, f'feature_{frame_idx:03d}.pt')
+            if os.path.exists(save_path):
+                print(f'Skip frame {frame_idx} (cached)')
+                continue
+
+            rgbs = self.all_rgbs_stack[frame_idx:frame_idx+1].cuda()  # shape: (1, H, W, 3)
+            vgg_input = normalize_vgg(rgbs.permute(0, 3, 1, 2))        # shape: (1, 3, H, W)
+            features = encoder(vgg_input).relu3_1                      # shape: (1, 256, H', W')
+
+            # Resize back to (H, W)
+            features = T.functional.resize(features, size=(h, w), interpolation=T.InterpolationMode.BILINEAR)
+            torch.save(features.cpu(), save_path)
+            print(f'Saved feature {frame_idx} to {save_path}')
+
+            del rgbs, features
+            torch.cuda.empty_cache()
+
+        print('prepare_feature_data Done!')
+    def merge_saved_features(self, save_dir='./feature_cache'):
+        '''
+        Step 2: Merge saved per-frame .pt features into memory.
+        '''
+        print('====> Merging saved features ...')
+        feature_files = sorted(glob.glob(os.path.join(save_dir, 'feature_*.pt')))
         features = []
 
-        for chunk_idx in tqdm(range(frames_num // chunk + int(frames_num % chunk > 0))):
-            rgbs_chunk = self.all_rgbs_stack[chunk_idx*chunk : (chunk_idx+1)*chunk].cuda()
-            features_chunk = encoder(normalize_vgg(rgbs_chunk.permute(0,3,1,2))).relu3_1
-            # resize to the size of rgb map so that rays can match
-            features_chunk = T.functional.resize(features_chunk, size=(h,w), 
-                                                 interpolation=T.InterpolationMode.BILINEAR)
-            features.append(features_chunk.detach().cpu().requires_grad_(False))
+        for path in tqdm(feature_files, desc='Merging'):
+            feature = torch.load(path)  # shape: (1, 256, H, W)
+            features.append(feature)
 
-        self.all_features_stack = torch.cat(features).permute(0,2,3,1) # (len(self.meta['frames]),h,w,256)
+        self.all_features_stack = torch.cat(features, dim=0).permute(0, 2, 3, 1)  # (N, H, W, 256)
         self.all_features = self.all_features_stack.reshape(-1, 256)
-        print('prepare_feature_data Done!')
-
+        print(f'[✓] Merged {len(features)} features, shape: {self.all_features_stack.shape}')
 
     def define_transforms(self):
         self.transform = T.ToTensor()

@@ -143,7 +143,8 @@ def reconstruction(args):
     tensorf.change_to_feature_mod(args.n_lamb_sh ,device)
     tensorf.rayMarch_weight_thres = args.rm_weight_mask_thre
 
-    train_dataset.prepare_feature_data(tensorf.encoder)
+    train_dataset.prepare_feature_data(tensorf.encoder, chunk=1, save_dir=f'{logfolder}/feature_cache')
+    train_dataset.merge_saved_features(f'{logfolder}/feature_cache')
 
     grad_vars = tensorf.get_optparam_groups_feature_mod(args.lr_init, args.lr_basis)
     if args.lr_decay_iters > 0:
