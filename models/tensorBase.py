@@ -259,7 +259,7 @@ class TensorBase(torch.nn.Module):
             length = np.prod(ckpt['alphaMask.shape'])
             alpha_volume = torch.from_numpy(np.unpackbits(ckpt['alphaMask.mask'])[:length].reshape(ckpt['alphaMask.shape']))
             self.alphaMask = AlphaGridMask(self.device, ckpt['alphaMask.aabb'].to(self.device), alpha_volume.float().to(self.device))
-        self.load_state_dict(ckpt['state_dict'])
+        self.load_state_dict(ckpt['state_dict'], strict=False)
 
 
     def sample_ray_ndc(self, rays_o, rays_d, is_train=True, N_samples=-1):
