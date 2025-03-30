@@ -10,7 +10,6 @@ def calc_mean_std(x, eps=1e-8):
         """
         mean = torch.mean(x.flatten(2), dim=-1, keepdim=True) # size of (N, C, 1)
         std = torch.std(x.flatten(2), dim=-1, keepdim=True) + eps # size of (N, C, 1)
-        
         return mean, std
 
 def cal_adain_style_loss(x, y):
@@ -78,7 +77,7 @@ class SimpleLinearStylizer(nn.Module):
         cov = cov.flatten(1)
         return cov
 
-    def get_content_matrix(self, c):
+    def get_content_matrix(self, c, chunk_size=512):
         '''
         Args:
             c: content feature [N,input_dim,S]
@@ -86,13 +85,21 @@ class SimpleLinearStylizer(nn.Module):
             mat: [N,S,embed_dim,embed_dim]
         '''
         normalized_c = self.IN(c)
-        # normalized_c = torch.nn.functional.instance_norm(c)
-        q_embed = self.q_embed(normalized_c)
-        k_embed = self.k_embed(normalized_c)
-        
-        c_cov = q_embed.transpose(1,2).unsqueeze(3) * k_embed.transpose(1,2).unsqueeze(2) # [N,S,embed_dim,embed_dim]
-        attn = torch.softmax(c_cov, -1) # [N,S,embed_dim,embed_dim]
+        q_embed = self.q_embed(normalized_c)  # [N, embed_dim, S]
+        k_embed = self.k_embed(normalized_c)  # [N, embed_dim, S]
 
+        q_embed = q_embed.transpose(1, 2)  # [N, S, embed_dim]
+        k_embed = k_embed.transpose(1, 2)  # [N, S, embed_dim]
+
+        attn_chunks = []
+        for i in range(0, q_embed.size(1), chunk_size):
+            q_chunk = q_embed[:, i:i + chunk_size, :]  # [N, chunk, embed_dim]
+            k_chunk = k_embed[:, i:i + chunk_size, :]  # [N, chunk, embed_dim]
+            cov_chunk = q_chunk.unsqueeze(3) * k_chunk.unsqueeze(2)  # [N, chunk, embed_dim, embed_dim]
+            attn_chunk = torch.softmax(cov_chunk, dim=-1)
+            attn_chunks.append(attn_chunk)
+
+        attn = torch.cat(attn_chunks, dim=1)  # [N, S, embed_dim, embed_dim]
         return attn, normalized_c
 
     def get_style_mean_std_matrix(self, s):
@@ -121,12 +128,11 @@ class SimpleLinearStylizer(nn.Module):
         Return:
             transformed_c: [N,embed_dim,S]
         '''
-        attn, normalized_c = self.get_content_matrix(c) # [N,S,embed_dim,embed_dim]
-        c = self.v_embed(normalized_c) # [N,embed_dim,S]
-        c = c.transpose(1,2).unsqueeze(3) # [N,S,embed_dim,1]
-        c = torch.matmul(attn, c).squeeze(3) # [N,S,embed_dim]
-
-        return c.transpose(1,2)
+        attn, normalized_c = self.get_content_matrix(c, chunk_size=512)  # [N,S,embed_dim,embed_dim]
+        c = self.v_embed(normalized_c)  # [N,embed_dim,S]
+        c = c.transpose(1,2).unsqueeze(3)  # [N,S,embed_dim,1]
+        c = torch.matmul(attn, c).squeeze(3)  # [N,S,embed_dim]
+        return c.transpose(1,2)  # [N, embed_dim, S]
 
     def transfer_style_2D(self, s_mean_std_mat, c, acc_map):
         '''
@@ -134,161 +140,14 @@ class SimpleLinearStylizer(nn.Module):
             c: content feature map after volume rendering [N,embed_dim,S]
             s_mat: style matrix [N,embed_dim,embed_dim]
             acc_map: [S]
-            
+
             s_mean = [N,input_dim,1]
             s_std = [N,input_dim,1]
         '''
         s_mean, s_std, s_mat = s_mean_std_mat
 
-        cs = torch.bmm(s_mat, c) # [N,embed_dim,S]
-        cs = self.unzipper(cs) # [N,input_dim,S]
+        cs = torch.bmm(s_mat, c)  # [N,embed_dim,S]
+        cs = self.unzipper(cs)  # [N,input_dim,S]
 
         cs = cs * s_std + s_mean * acc_map[None,None,...]
-
-        return cs
-
-
-class AdaAttN(nn.Module):
-    """ Attention-weighted AdaIN (Liu et al., ICCV 21) """
-
-    def __init__(self, qk_dim, v_dim):
-        """
-        Args:
-            qk_dim (int): query and key size.
-            v_dim (int): value size.
-        """
-        super(AdaAttN, self).__init__()
-
-        self.q_embed = nn.Conv1d(qk_dim, qk_dim, 1)
-        self.k_embed = nn.Conv1d(qk_dim, qk_dim, 1)
-        self.s_embed = nn.Conv1d(v_dim, v_dim, 1)
-
-    def forward(self, q, k):
-        """
-        Args:
-            q (float tensor, (bs, qk, *)): query (content) features.
-            k (float tensor, (bs, qk, *)): key (style) features.
-            c (float tensor, (bs, v, *)): content value features.
-            s (float tensor, (bs, v, *)): style value features.
-
-        Returns:
-            cs (float tensor, (bs, v, *)): stylized content features.
-        """
-        c, s = q, k
-
-        shape = c.shape
-        q, k = q.flatten(2), k.flatten(2)
-        c, s = c.flatten(2), s.flatten(2)
-
-        # QKV attention with projected content and style features
-        q = self.q_embed(F.instance_norm(q)).transpose(2, 1)    # (bs, n, qk)
-        k = self.k_embed(F.instance_norm(k))                    # (bs, qk, m)
-        s = self.s_embed(s).transpose(2, 1)                     # (bs, m, v)
-        attn = F.softmax(torch.bmm(q, k), -1)                   # (bs, n, m)
-        
-        # attention-weighted channel-wise statistics
-        mean = torch.bmm(attn, s)                               # (bs, n, v)
-        var = F.relu(torch.bmm(attn, s ** 2) - mean ** 2)       # (bs, n, v)
-        mean = mean.transpose(2, 1)                             # (bs, v, n)
-        std = torch.sqrt(var).transpose(2, 1)                   # (bs, v, n)
-        
-        cs = F.instance_norm(c) * std + mean                    # (bs, v, n)
-        cs = cs.reshape(shape)
-        return cs
-
-class AdaAttN_new_IN(nn.Module):
-    """ Attention-weighted AdaIN (Liu et al., ICCV 21) """
-
-    def __init__(self, qk_dim, v_dim):
-        """
-        Args:
-            qk_dim (int): query and key size.
-            v_dim (int): value size.
-        """
-        super(AdaAttN_new_IN, self).__init__()
-
-        self.q_embed = nn.Conv1d(qk_dim, qk_dim, 1)
-        self.k_embed = nn.Conv1d(qk_dim, qk_dim, 1)
-        self.s_embed = nn.Conv1d(v_dim, v_dim, 1)
-        self.IN = LearnableIN(qk_dim)
-
-    def forward(self, q, k):
-        """
-        Args:
-            q (float tensor, (bs, qk, *)): query (content) features.
-            k (float tensor, (bs, qk, *)): key (style) features.
-            c (float tensor, (bs, v, *)): content value features.
-            s (float tensor, (bs, v, *)): style value features.
-
-        Returns:
-            cs (float tensor, (bs, v, *)): stylized content features.
-        """
-        c, s = q, k
-
-        shape = c.shape
-        q, k = q.flatten(2), k.flatten(2)
-        c, s = c.flatten(2), s.flatten(2)
-
-        # QKV attention with projected content and style features
-        q = self.q_embed(self.IN(q)).transpose(2, 1)    # (bs, n, qk)
-        k = self.k_embed(F.instance_norm(k))                    # (bs, qk, m)
-        s = self.s_embed(s).transpose(2, 1)                     # (bs, m, v)
-        attn = F.softmax(torch.bmm(q, k), -1)                   # (bs, n, m)
-        
-        # attention-weighted channel-wise statistics
-        mean = torch.bmm(attn, s)                               # (bs, n, v)
-        var = F.relu(torch.bmm(attn, s ** 2) - mean ** 2)       # (bs, n, v)
-        mean = mean.transpose(2, 1)                             # (bs, v, n)
-        std = torch.sqrt(var).transpose(2, 1)                   # (bs, v, n)
-        
-        cs = self.IN(c) * std + mean                    # (bs, v, n)
-        cs = cs.reshape(shape)
-        return cs
-
-class AdaAttN_woin(nn.Module):
-    """ Attention-weighted AdaIN (Liu et al., ICCV 21) """
-
-    def __init__(self, qk_dim, v_dim):
-        """
-        Args:
-            qk_dim (int): query and key size.
-            v_dim (int): value size.
-        """
-        super().__init__()
-
-        self.q_embed = nn.Conv1d(qk_dim, qk_dim, 1)
-        self.k_embed = nn.Conv1d(qk_dim, qk_dim, 1)
-        self.s_embed = nn.Conv1d(v_dim, v_dim, 1)
-
-    def forward(self, q, k):
-        """
-        Args:
-            q (float tensor, (bs, qk, *)): query (content) features.
-            k (float tensor, (bs, qk, *)): key (style) features.
-            c (float tensor, (bs, v, *)): content value features.
-            s (float tensor, (bs, v, *)): style value features.
-
-        Returns:
-            cs (float tensor, (bs, v, *)): stylized content features.
-        """
-        c, s = q, k
-
-        shape = c.shape
-        q, k = q.flatten(2), k.flatten(2)
-        c, s = c.flatten(2), s.flatten(2)
-
-        # QKV attention with projected content and style features
-        q = self.q_embed(q).transpose(2, 1)    # (bs, n, qk)
-        k = self.k_embed(k)                    # (bs, qk, m)
-        s = self.s_embed(s).transpose(2, 1)                     # (bs, m, v)
-        attn = F.softmax(torch.bmm(q, k), -1)                   # (bs, n, m)
-        
-        # attention-weighted channel-wise statistics
-        mean = torch.bmm(attn, s)                               # (bs, n, v)
-        var = F.relu(torch.bmm(attn, s ** 2) - mean ** 2)       # (bs, n, v)
-        mean = mean.transpose(2, 1)                             # (bs, v, n)
-        std = torch.sqrt(var).transpose(2, 1)                   # (bs, v, n)
-        
-        cs = c * std + mean                    # (bs, v, n)
-        cs = cs.reshape(shape)
         return cs
