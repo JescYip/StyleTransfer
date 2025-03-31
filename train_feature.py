@@ -17,7 +17,7 @@ import datetime
 from dataLoader import dataset_dict
 import sys
 
-device = torch.device("cuda" if torch.cuda.is_available() else "CPU")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 renderer = OctreeRender_trilinear_fast
 
@@ -143,8 +143,7 @@ def reconstruction(args):
     tensorf.change_to_feature_mod(args.n_lamb_sh ,device)
     tensorf.rayMarch_weight_thres = args.rm_weight_mask_thre
 
-    train_dataset.prepare_feature_data(tensorf.encoder, chunk=1, save_dir=f'{logfolder}/feature_cache')
-    train_dataset.merge_saved_features(f'{logfolder}/feature_cache')
+    train_dataset.prepare_feature_data(tensorf.encoder)
 
     grad_vars = tensorf.get_optparam_groups_feature_mod(args.lr_init, args.lr_basis)
     if args.lr_decay_iters > 0:
@@ -160,10 +159,8 @@ def reconstruction(args):
 
     torch.cuda.empty_cache()
     PSNRs = []
-    
-    allrays = train_dataset.all_rays.to(device)
-    allfeatures = train_dataset.all_features.to(device)
 
+    allrays, allfeatures = train_dataset.all_rays, train_dataset.all_features
     allrays_stack, allrgbs_stack = train_dataset.all_rays_stack, train_dataset.all_rgbs_stack
     if not args.ndc_ray:
         allrays, allfeatures = tensorf.filtering_rays(allrays, allfeatures, bbox_only=True)
@@ -289,4 +286,3 @@ if __name__ == '__main__':
         render_test(args)
     else:
         reconstruction(args)
-
