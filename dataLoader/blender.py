@@ -3,6 +3,7 @@ from torch.utils.data import Dataset
 import json
 from tqdm import tqdm
 import os
+import glob
 from PIL import Image
 from torchvision import transforms as T
 
@@ -129,22 +130,6 @@ class BlenderDataset(Dataset):
             torch.cuda.empty_cache()
 
         print('prepare_feature_data Done!')
-    def merge_saved_features(self, save_dir='./feature_cache'):
-        '''
-        Step 2: Merge saved per-frame .pt features into memory.
-        '''
-        print('====> Merging saved features ...')
-        feature_files = sorted(glob.glob(os.path.join(save_dir, 'feature_*.pt')))
-        features = []
-
-        for path in tqdm(feature_files, desc='Merging'):
-            feature = torch.load(path)  # shape: (1, 256, H, W)
-            features.append(feature)
-
-        self.all_features_stack = torch.cat(features, dim=0).permute(0, 2, 3, 1)  # (N, H, W, 256)
-        self.all_features = self.all_features_stack.reshape(-1, 256)
-        print(f'[✓] Merged {len(features)} features, shape: {self.all_features_stack.shape}')
-
     def define_transforms(self):
         self.transform = T.ToTensor()
         

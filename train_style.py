@@ -318,4 +318,3 @@ if __name__ == '__main__':
         render_test(args)
     else:
         reconstruction(args)
-

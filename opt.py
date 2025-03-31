@@ -16,8 +16,6 @@ def config_parser(cmd=None):
                         help='input data directory')
     parser.add_argument("--progress_refresh_rate", type=int, default=10,
                         help='how many iterations to show psnrs or iters')
-    parser.add_argument('--style_loss_mode', type=str, default='adain', choices=['adain', 'gram'], 
-                        help='Selecting the type of stylistic loss')
 
     parser.add_argument('--with_depth', action='store_true')
     parser.add_argument('--downsample_train', type=float, default=1.0)
@@ -78,8 +76,8 @@ def config_parser(cmd=None):
     # model
     # volume options
     parser.add_argument("--n_lamb_sigma", type=int, action="append")
-    #parser.add_argument("--n_lamb_sh", type=int, action="append")
-    parser.add_argument('--n_lamb_sh', type=int, nargs=3, default=[48, 12, 12], help='number of SH components for each axis (X, Y, Z)')
+    parser.add_argument("--n_lamb_sh", type=int, action="append")
+    #parser.add_argument('--n_lamb_sh', type=int, nargs=3, default=[48, 12, 12], help='number of SH components for each axis (X, Y, Z)')
     parser.add_argument("--data_dim_color", type=int, default=27)
 
     parser.add_argument("--rm_weight_mask_thre", type=float, default=0.0001,
