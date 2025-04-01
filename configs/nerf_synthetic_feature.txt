@@ -1,12 +1,12 @@
 dataset_name = blender
-datadir = ./data/nerf_synthetic/lego
+datadir = /content/drive/MyDrive/data/nerf_synthetic/lego
 ckpt = ./log/lego/lego.th
 expname = lego
 basedir = ./log_feature
 
 TV_weight_feature = 10
 
-n_iters = 25000
+n_iters = 5000
 patch_size = 256
 batch_size = 4096
 chunk_size = 4096

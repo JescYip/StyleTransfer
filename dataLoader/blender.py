@@ -99,29 +99,39 @@ class BlenderDataset(Dataset):
             avg_pool = torch.nn.AvgPool2d(4, ceil_mode=True)
             self.ds_all_rays_stack = avg_pool(self.all_rays_stack.permute(0,3,1,2)).permute(0,2,3,1) # (len(self.meta['frames]),h/4,w/4,6)
             self.all_rgbs_stack = torch.stack(all_rgbs, 0).reshape(-1,*self.img_wh[::-1], 3)  # (len(self.meta['frames]),h,w,3)
-
+    
     @torch.no_grad()
-    def prepare_feature_data(self, encoder, chunk=8):
-        '''
-        Prepare feature maps as training data.
-        '''
-        assert self.is_stack, 'Dataset should contain original stacked taining data!'
-        print('====> prepare_feature_data ...')
+    def prepare_feature_data(self, encoder, save_dir='/content/features_cached'):
+        import os
+        os.makedirs(save_dir, exist_ok=True)
 
-        frames_num, h, w, _ = self.all_rgbs_stack.size()
-        features = []
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        encoder = encoder.to(device)
+        for name, module in encoder.named_children():
+            module.to(device)
 
-        for chunk_idx in range(frames_num // chunk + int(frames_num % chunk > 0)):
-            rgbs_chunk = self.all_rgbs_stack[chunk_idx*chunk : (chunk_idx+1)*chunk].cuda()
-            features_chunk = encoder(normalize_vgg(rgbs_chunk.permute(0,3,1,2))).relu3_1
-            # resize to the size of rgb map so that rays can match
-            features_chunk = T.functional.resize(features_chunk, size=(h,w), 
-                                                 interpolation=T.InterpolationMode.BILINEAR)
-            features.append(features_chunk.detach().cpu().requires_grad_(False))
+        print('====> prepare_feature_data (low memory + save per frame)...')
+        frames_num, h, w, _ = self.all_rgbs_stack.shape
 
-        self.all_features_stack = torch.cat(features).permute(0,2,3,1) # (len(self.meta['frames]),h,w,256)
-        self.all_features = self.all_features_stack.reshape(-1, 256)
-        print('prepare_feature_data Done!')
+        for i in tqdm(range(frames_num)):
+            save_path = os.path.join(save_dir, f'feature_{i:03d}.pt')
+            if os.path.exists(save_path):
+                continue  # 已经缓存过就跳过
+
+            rgb = self.all_rgbs_stack[i].to(device)
+            rgb = rgb.permute(2, 0, 1).unsqueeze(0)  # [1, 3, H, W]
+            rgb = normalize_vgg(rgb)
+
+            feature = encoder(rgb).relu3_1
+            feature = T.functional.resize(feature, size=(h, w), interpolation=T.InterpolationMode.BILINEAR)
+            feature = feature.squeeze(0).permute(1, 2, 0).cpu()  # [H, W, C]
+
+            torch.save(feature, save_path) 
+            del rgb, feature
+            torch.cuda.empty_cache()
+        self.feature_paths = sorted(glob.glob('/content/features_cached/feature_*.pt'))
+        print('====> feature extraction and save DONE.')
+
 
     def define_transforms(self):
         self.transform = T.ToTensor()
