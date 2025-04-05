@@ -1,33 +1,28 @@
 dataset_name = llff
 datadir = /content/drive/MyDrive/data/nerf_data
+ckpt = ./log1_feature/own_style/own_style.th
 expname = own_style
-basedir = ./log1
+basedir = ./log1_style
 
-downsample_train = 2.0
+nSamples = 300
+patch_size = 256
+chunk_size = 2048
+
+content_weight = 1
+style_weight = 20
+featuremap_tv_weight = 0
+image_tv_weight = 0
+
+rm_weight_mask_thre = 0.001
+
+downsample_train = 4.0
 ndc_ray = 1
 
 n_iters = 10000
-batch_size = 4096
-
-N_voxel_init = 2097156
-N_voxel_final = 262144000
-upsamp_list = [2000,3000,4000,5500]
-update_AlphaMask_list = [2500]
-
-N_vis = -1
-vis_every = 10000
-
-render_test = 1
-render_path = 1
 
 n_lamb_sigma = [16,4,4]
 n_lamb_sh = [48,12,12]
+N_voxel_init = 2097156 # 128**3
+N_voxel_final = 262144000 # 640**3
 
-shadingMode = MLP_Fea
 fea2denseAct = relu
-
-view_pe = 0
-fea_pe = 0
-
-TV_weight_density = 1.0
-TV_weight_app = 1.0
