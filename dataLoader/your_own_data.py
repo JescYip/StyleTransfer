@@ -70,7 +70,15 @@ class YourOwnDataset(Dataset):
             c2w = torch.FloatTensor(pose)
             self.poses += [c2w]
 
-            image_path = os.path.join(self.root_dir, f"{frame['file_path']}.png")
+            image_path = os.path.join(self.root_dir, frame['file_path'])
+
+            # 自动补图像后缀
+            if not os.path.exists(image_path):
+                for ext in ['.jpg', '.png', '.jpeg']:
+                    if os.path.exists(image_path + ext):
+                        image_path += ext
+                        break
+
             self.image_paths += [image_path]
             img = Image.open(image_path)
             
@@ -88,6 +96,9 @@ class YourOwnDataset(Dataset):
 
 
         self.poses = torch.stack(self.poses)
+        self.all_rays_stack = torch.stack(self.all_rays, 0).reshape(-1, self.img_wh[1], self.img_wh[0], 6)
+        self.all_rgbs_stack = torch.stack(self.all_rgbs, 0).reshape(-1, self.img_wh[1], self.img_wh[0], 3)
+
         if not self.is_stack:
             self.all_rays = torch.cat(self.all_rays, 0)  # (len(self.meta['frames])*h*w, 3)
             self.all_rgbs = torch.cat(self.all_rgbs, 0)  # (len(self.meta['frames])*h*w, 3)
