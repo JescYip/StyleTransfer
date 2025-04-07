@@ -3,7 +3,8 @@ import os
 from unittest.mock import patch
 from tqdm.auto import tqdm
 from opt import config_parser
-
+import glob
+import torch
 
 
 import json, random
@@ -109,6 +110,9 @@ def reconstruction(args):
     h_rays, w_rays = train_dataset.img_wh[1], train_dataset.img_wh[0]
     ndc_ray = args.ndc_ray
 
+    if args.patch_size > h_rays or args.patch_size > w_rays:
+        print(f"[WARNING] patch_size {args.patch_size} 太大，自动 fallback 为 min(H,W) = {min(h_rays, w_rays)}")
+        args.patch_size = min(h_rays, w_rays)
     patch_size = args.patch_size
 
     
@@ -145,6 +149,22 @@ def reconstruction(args):
 
     train_dataset.prepare_feature_data(tensorf.encoder)
 
+    feature_files = sorted(glob.glob('/content/features_cached/feature_*.pt'))
+    
+    '''
+    features_stack = [torch.load(f) for f in feature_files]
+    train_dataset.all_features_stack = torch.stack(features_stack, dim=0)
+    train_dataset.all_features = train_dataset.all_features_stack.reshape(-1, features_stack[0].shape[-1])
+
+    feature_files = sorted(glob.glob('/content/features_cached/feature_*.pt'))
+    features_stack = [torch.load(f) for f in feature_files]  # 每帧 [H, W, C]
+
+    train_dataset.all_features_stack = torch.stack(features_stack, dim=0)  # [N, H, W, C]
+    train_dataset.all_features = train_dataset.all_features_stack.reshape(-1, features_stack[0].shape[-1])
+    feature_files = sorted(glob.glob('/content/features_cached/feature_*.pt'))
+    train_dataset.feature_paths = feature_files  # ✅ 只记录路径，不加载内容
+    '''
+
     grad_vars = tensorf.get_optparam_groups_feature_mod(args.lr_init, args.lr_basis)
     if args.lr_decay_iters > 0:
         lr_factor = args.lr_decay_target_ratio**(1/args.lr_decay_iters)
@@ -160,12 +180,14 @@ def reconstruction(args):
     torch.cuda.empty_cache()
     PSNRs = []
 
-    allrays, allfeatures = train_dataset.all_rays, train_dataset.all_features
     allrays_stack, allrgbs_stack = train_dataset.all_rays_stack, train_dataset.all_rgbs_stack
+    allrays = train_dataset.all_rays
+
     if not args.ndc_ray:
-        allrays, allfeatures = tensorf.filtering_rays(allrays, allfeatures, bbox_only=True)
+        allrays, _ = tensorf.filtering_rays(allrays, torch.empty_like(allrays[:, :3]), bbox_only=True)
+
     trainingSampler = SimpleSampler(allrays.shape[0], args.batch_size)
-    frameSampler = iter(InfiniteSamplerWrapper(allrays_stack.size(0))) # every next(sampler) returns a frame index
+    frameSampler = iter(InfiniteSamplerWrapper(allrays_stack.size(0)))  # 每次迭代返回一帧
 
 
     TV_weight_feature = args.TV_weight_feature
@@ -175,101 +197,96 @@ def reconstruction(args):
 
     pbar = tqdm(range(args.n_iters), miniters=args.progress_refresh_rate, file=sys.stdout)
     for iteration in pbar:
+      feature_loss, pixel_loss = 0., 0.
 
-        feature_loss, pixel_loss = 0., 0.
-        if iteration%2==0:
-            ray_idx = trainingSampler.nextids()
-            rays_train, features_train = allrays[ray_idx], allfeatures[ray_idx].to(device)
+      frame_idx = next(frameSampler)
+      rays_train = allrays_stack[frame_idx, ...].reshape(-1, 6).to(device)
+      # ✅ 动态加载该帧的 .pt 特征
+      features_train = torch.load(train_dataset.feature_paths[frame_idx]).to(device)
+      features_train = features_train.reshape(-1, features_train.shape[-1])
+      
+      start_h = np.random.randint(0, h_rays - patch_size + 1)
+      start_w = np.random.randint(0, w_rays - patch_size + 1)
+      if white_bg:
+          mid_h, mid_w = (h_rays - patch_size + 1) / 2, (w_rays - patch_size + 1) / 2
+          if mid_h - start_h >= 1:
+              start_h += np.random.randint(0, mid_h - start_h)
+          elif mid_h - start_h <= -1:
+              start_h += np.random.randint(mid_h - start_h, 0)
+          if mid_w - start_w >= 1:
+              start_w += np.random.randint(0, mid_w - start_w)
+          elif mid_w - start_w <= -1:
+              start_w += np.random.randint(mid_w - start_w, 0)
 
-            feature_map, _ = renderer(rays_train, tensorf, chunk=args.chunk_size, N_samples=nSamples, white_bg = white_bg, 
-                                ndc_ray=ndc_ray, render_feature=True, device=device, is_train=True)
+      rays_train = allrays_stack[frame_idx, start_h:start_h+patch_size,
+                                              start_w:start_w+patch_size, :].reshape(-1, 6).to(device)
 
-            feature_loss = torch.mean((feature_map - features_train) ** 2)
-        else:
-            frame_idx = next(frameSampler)
-            start_h = np.random.randint(0, h_rays-patch_size+1)
-            start_w = np.random.randint(0, w_rays-patch_size+1)
-            if white_bg:
-                # move random sampled patches into center
-                mid_h, mid_w = (h_rays-patch_size+1)/2, (w_rays-patch_size+1)/2
-                if mid_h-start_h>=1:
-                    start_h += np.random.randint(0, mid_h-start_h)
-                elif mid_h-start_h<=-1:
-                    start_h += np.random.randint(mid_h-start_h, 0)
-                if mid_w-start_w>=1:
-                    start_w += np.random.randint(0, mid_w-start_w)
-                elif mid_w-start_w<=-1:
-                    start_w += np.random.randint(mid_w-start_w, 0)
+      rgbs_train = allrgbs_stack[frame_idx, start_h:start_h+patch_size,
+                                            start_w:start_w+patch_size, :].to(device)
 
-            rays_train = allrays_stack[frame_idx, start_h:start_h+patch_size, 
-                                                    start_w:start_w+patch_size, :].reshape(-1, 6).to(device)
-            # [patch*patch, 6]
-            
-            rgbs_train = allrgbs_stack[frame_idx, start_h:(start_h+patch_size), 
-                                                  start_w:(start_w+patch_size), :].to(device)
-            # [patch, patch, 3]
+      feature_map, _ = renderer(rays_train, tensorf, chunk=args.chunk_size, N_samples=nSamples,
+                                white_bg=white_bg, ndc_ray=ndc_ray, render_feature=True,
+                                device=device, is_train=True)
 
-            feature_map, _ = renderer(rays_train, tensorf, chunk=args.chunk_size, N_samples=nSamples, white_bg=white_bg, 
-                                ndc_ray=ndc_ray, render_feature=True, device=device, is_train=True)
+      feature_map = feature_map.reshape(patch_size, patch_size, 256)[None, ...].permute(0, 3, 1, 2)
+      recon_rgb = tensorf.decoder(feature_map)
 
-            feature_map = feature_map.reshape(patch_size, patch_size, 256)[None,...].permute(0,3,1,2)
-            recon_rgb = tensorf.decoder(feature_map)
+      rgbs_train = rgbs_train[None, ...].permute(0, 3, 1, 2)
+      img_enc = tensorf.encoder(normalize_vgg(rgbs_train))
+      recon_rgb_enc = tensorf.encoder(recon_rgb)
 
-            rgbs_train = rgbs_train[None,...].permute(0,3,1,2)
-            img_enc = tensorf.encoder(normalize_vgg(rgbs_train))
-            recon_rgb_enc = tensorf.encoder(recon_rgb)
-            
-            feature_loss =(F.mse_loss(recon_rgb_enc.relu4_1, img_enc.relu4_1) +
-                           F.mse_loss(recon_rgb_enc.relu3_1, img_enc.relu3_1)) / 10
+      feature_loss = (F.mse_loss(recon_rgb_enc.relu4_1, img_enc.relu4_1) +
+                      F.mse_loss(recon_rgb_enc.relu3_1, img_enc.relu3_1)) / 10
 
-            recon_rgb = denormalize_vgg(recon_rgb)
+      recon_rgb = denormalize_vgg(recon_rgb)
+      pixel_loss = torch.mean((recon_rgb - rgbs_train) ** 2)
 
-            pixel_loss = torch.mean((recon_rgb - rgbs_train) ** 2)
+      total_loss = pixel_loss + feature_loss
 
-        total_loss = pixel_loss + feature_loss
+      # TV loss
+      if TV_weight_feature > 0:
+          TV_weight_feature *= lr_factor
+          loss_tv = tensorf.TV_loss_feature(tvreg) * TV_weight_feature
+          total_loss += loss_tv
+          summary_writer.add_scalar('train/reg_tv_feature', loss_tv.detach().item(), global_step=iteration)
 
-        # loss
-        # NOTE: Calculate feature TV loss rather than appearence TV loss
-        if TV_weight_feature>0:
-            TV_weight_feature *= lr_factor
-            loss_tv = tensorf.TV_loss_feature(tvreg)*TV_weight_feature
-            total_loss = total_loss + loss_tv
-            summary_writer.add_scalar('train/reg_tv_feature', loss_tv.detach().item(), global_step=iteration)
+      optimizer.zero_grad()
+      total_loss.backward()
+      optimizer.step()
 
-        optimizer.zero_grad()
-        total_loss.backward()
-        optimizer.step()
+      # Logging PSNR
+      if pixel_loss == 0:
+          feature_loss = feature_loss.detach().item()
+          PSNRs.append(-10.0 * np.log(feature_loss) / np.log(10.0))
+          summary_writer.add_scalar('train/PSNR_feature', PSNRs[-1], global_step=iteration)
+          summary_writer.add_scalar('train/mse_feature', feature_loss, global_step=iteration)
+      else:
+          pixel_loss = pixel_loss.detach().item()
+          PSNRs.append(-10.0 * np.log(pixel_loss) / np.log(10.0))
+          summary_writer.add_scalar('train/PSNR_pixel', PSNRs[-1], global_step=iteration)
+          summary_writer.add_scalar('train/mse_pixel', pixel_loss, global_step=iteration)
+          summary_writer.add_scalar('train/mse_recon_feature', feature_loss.detach().item(), global_step=iteration)
 
-        if pixel_loss == 0:
-            feature_loss = feature_loss.detach().item()
-            PSNRs.append(-10.0 * np.log(feature_loss) / np.log(10.0))
-            summary_writer.add_scalar('train/PSNR_feature', PSNRs[-1], global_step=iteration)
-            summary_writer.add_scalar('train/mse_feature', feature_loss, global_step=iteration)
-        else:
-            pixel_loss = pixel_loss.detach().item()
-            PSNRs.append(-10.0 * np.log(pixel_loss) / np.log(10.0))
-            summary_writer.add_scalar('train/PSNR_pixel', PSNRs[-1], global_step=iteration)
-            summary_writer.add_scalar('train/mse_pixel', pixel_loss, global_step=iteration)
-            summary_writer.add_scalar('train/mse_recon_feature', feature_loss.detach().item(), global_step=iteration)
+      for param_group in optimizer.param_groups:
+          param_group['lr'] = param_group['lr'] * lr_factor
 
+      if iteration % args.progress_refresh_rate == 0:
+          pbar.set_description(
+              f'Iteration {iteration:05d}:'
+              + f' psnr = {float(np.mean(PSNRs)):.2f}'
+          )
+          PSNRs = []
 
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = param_group['lr'] * lr_factor
-
-        # Print the current values of the losses.
-        if iteration % args.progress_refresh_rate == 0:
-            pbar.set_description(
-                f'Iteration {iteration:05d}:'
-                + f' psnr = {float(np.mean(PSNRs)):.2f}'
-            )
-            PSNRs = []
-
-        if iteration % (args.progress_refresh_rate*20) == 1:
-            summary_writer.add_image('output', make_grid([rgbs_train.squeeze(), 
-                                                        recon_rgb.clamp(0, 1).squeeze()],  
+      if iteration % (args.progress_refresh_rate * 20) == 1:
+          summary_writer.add_image('output', make_grid([rgbs_train.squeeze(),
+                                                        recon_rgb.clamp(0, 1).squeeze()],
                                                         nrow=2, padding=0, normalize=False),
-                                                        global_step=iteration)
-        
+                                  global_step=iteration)
+
+      # ✅ 显存清理（关键）
+      del rays_train, features_train, feature_map
+      del recon_rgb, rgbs_train, img_enc, recon_rgb_enc
+      torch.cuda.empty_cache()   
 
     tensorf.save(f'{logfolder}/{args.expname}.th')
 

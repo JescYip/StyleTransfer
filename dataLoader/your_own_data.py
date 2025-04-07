@@ -3,7 +3,9 @@ from torch.utils.data import Dataset
 import json
 from tqdm import tqdm
 import os
+import glob
 from PIL import Image
+import torchvision.transforms.functional as TF
 from torchvision import transforms as T
 
 
@@ -102,13 +104,58 @@ class YourOwnDataset(Dataset):
         if not self.is_stack:
             self.all_rays = torch.cat(self.all_rays, 0)  # (len(self.meta['frames])*h*w, 3)
             self.all_rgbs = torch.cat(self.all_rgbs, 0)  # (len(self.meta['frames])*h*w, 3)
-
+            if len(self.all_masks) > 0:
+                self.all_masks = torch.cat(self.all_masks, 0)  # <- 加这一行
+   
 #             self.all_depth = torch.cat(self.all_depth, 0)  # (len(self.meta['frames])*h*w, 3)
         else:
             self.all_rays = torch.stack(self.all_rays, 0)  # (len(self.meta['frames]),h*w, 3)
             self.all_rgbs = torch.stack(self.all_rgbs, 0).reshape(-1,*self.img_wh[::-1], 3)  # (len(self.meta['frames]),h,w,3)
             # self.all_masks = torch.stack(self.all_masks, 0).reshape(-1,*self.img_wh[::-1])  # (len(self.meta['frames]),h,w,3)
+        self.focal = [self.focal_x, self.focal_y]  
+        self.render_path = self.poses.clone()  # 或者 .copy()
 
+    def prepare_feature_data(self, encoder, save_dir='/content/features_cached'):
+        import os
+        os.makedirs(save_dir, exist_ok=True)
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        encoder = encoder.to(device)
+        for name, module in encoder.named_children():
+            module.to(device)
+
+        print('====> prepare_feature_data (low memory + save per frame)...')
+        frames_num, h, w, _ = self.all_rgbs_stack.shape
+
+        self.feature_paths = []
+        self.all_features = []
+
+        for i in tqdm(range(frames_num)):
+            save_path = os.path.join(save_dir, f'feature_{i:03d}.pt')
+            self.feature_paths.append(save_path)
+
+            if os.path.exists(save_path):
+                # 也加载到 all_features 中
+                feature = torch.load(save_path)
+            else:
+                rgb = self.all_rgbs_stack[i].to(device)  # [H, W, 3]
+                rgb = rgb.permute(2, 0, 1).unsqueeze(0)   # [1, 3, H, W]
+                rgb = normalize_vgg(rgb)
+
+                feature = encoder(rgb).relu3_1  # [1, C, H', W']
+                feature = TF.resize(feature, size=(h, w), interpolation=TF.InterpolationMode.BILINEAR)
+                feature = feature.squeeze(0).permute(1, 2, 0).cpu()  # [H, W, C]
+
+                torch.save(feature, save_path)
+                del rgb
+                torch.cuda.empty_cache()
+
+            # 为训练构造 [H*W, C] 并保存到 all_features
+            self.all_features.append(feature.reshape(-1, feature.shape[-1]))
+
+        # 拼接所有帧的特征
+        self.all_features = torch.cat(self.all_features, dim=0)  # [N_total_pixels, C]
+        print(f'====> Feature extraction DONE. Total features: {self.all_features.shape}')
 
     def define_transforms(self):
         self.transform = T.ToTensor()

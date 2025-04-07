@@ -1,4 +1,4 @@
-dataset_name = llff
+dataset_name = own_data
 datadir = /content/drive/MyDrive/data/nerf_data
 expname = own_style
 basedir = ./log1
@@ -9,7 +9,7 @@ ndc_ray = 1
 n_iters = 10000
 batch_size = 4096
 
-N_voxel_init = 2097156
+N_voxel_init = 2097152
 N_voxel_final = 262144000
 upsamp_list = [2000,3000,4000,5500]
 update_AlphaMask_list = [2500]
@@ -29,5 +29,11 @@ fea2denseAct = relu
 view_pe = 0
 fea_pe = 0
 
+L1_weight_inital = 1e-4
 TV_weight_density = 1.0
+
+L1_weight_rest = 4e-5
 TV_weight_app = 1.0
+Ortho_weight = 0.0
+rm_weight_mask_thre = 1e-4
+alpha_mask_thre = 0.0001

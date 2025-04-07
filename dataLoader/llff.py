@@ -3,6 +3,7 @@ from torch.utils.data import Dataset
 import glob
 import numpy as np
 import os
+from tqdm import tqdm
 from PIL import Image
 from torchvision import transforms as T
 
@@ -254,35 +255,37 @@ class LLFFDataset(Dataset):
             self.all_rgbs_stack = torch.stack(all_rgbs, 0).reshape(-1,*self.img_wh[::-1], 3)  # (len(self.meta['frames]),h,w,3)
 
     @torch.no_grad()
-    def prepare_feature_data(self, encoder, chunk=1, save_dir='./feature_cache'):
-        '''
-        Prepare feature maps as training data, saved to disk to avoid RAM explosion.
-        '''
-        assert self.is_stack, 'Dataset should contain original stacked training data!'
-        print('====> prepare_feature_data ...')
-
+    def prepare_feature_data(self, encoder, save_dir='/content/features_cached'):
+        import os
         os.makedirs(save_dir, exist_ok=True)
-        frames_num, h, w, _ = self.all_rgbs_stack.size()
 
-        for frame_idx in range(frames_num):
-            save_path = os.path.join(save_dir, f'feature_{frame_idx:03d}.pt')
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        encoder = encoder.to(device)
+        for name, module in encoder.named_children():
+            module.to(device)
+
+        print('====> prepare_feature_data (low memory + save per frame)...')
+        frames_num, h, w, _ = self.all_rgbs_stack.shape
+
+        for i in tqdm(range(frames_num)):
+            save_path = os.path.join(save_dir, f'feature_{i:03d}.pt')
             if os.path.exists(save_path):
-                print(f'Skip frame {frame_idx} (cached)')
-                continue
+                continue  # 已经缓存过就跳过
 
-            rgbs = self.all_rgbs_stack[frame_idx:frame_idx+1].cuda()  # shape: (1, H, W, 3)
-            vgg_input = normalize_vgg(rgbs.permute(0, 3, 1, 2))        # shape: (1, 3, H, W)
-            features = encoder(vgg_input).relu3_1                      # shape: (1, 256, H', W')
+            rgb = self.all_rgbs_stack[i].to(device)
+            rgb = rgb.permute(2, 0, 1).unsqueeze(0)  # [1, 3, H, W]
+            rgb = normalize_vgg(rgb)
 
-            # Resize back to (H, W)
-            features = T.functional.resize(features, size=(h, w), interpolation=T.InterpolationMode.BILINEAR)
-            torch.save(features.cpu(), save_path)
-            print(f'Saved feature {frame_idx} to {save_path}')
+            feature = encoder(rgb).relu3_1
+            feature = T.functional.resize(feature, size=(h, w), interpolation=T.InterpolationMode.BILINEAR)
+            feature = feature.squeeze(0).permute(1, 2, 0).cpu()  # [H, W, C]
 
-            del rgbs, features
+            torch.save(feature, save_path) 
+            del rgb, feature
             torch.cuda.empty_cache()
-
-        print('prepare_feature_data Done!')
+        self.feature_paths = sorted(glob.glob('/content/features_cached/feature_*.pt'))
+        print('====> feature extraction and save DONE.')
+  
     def define_transforms(self):
         self.transform = T.ToTensor()
 

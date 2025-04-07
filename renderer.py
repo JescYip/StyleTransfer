@@ -88,8 +88,13 @@ def evaluation_feature(test_dataset, tensorf, args, renderer, chunk_size=2048, s
         vis_feature_map = torch.sigmoid(feature_map[:, [1,2,3], :, :].permute(0,2,3,1))
         
         if test_dataset.white_bg:
-            mask = test_dataset.all_masks[idx:idx+1].to(device)
-            recon_rgb = mask*recon_rgb + (1.-mask)
+            if hasattr(test_dataset, "all_masks") and isinstance(test_dataset.all_masks, torch.Tensor):
+                mask = test_dataset.all_masks[idx:idx+1].to(device)
+            else:
+                mask = None
+
+            if mask is not None:
+                recon_rgb = mask * recon_rgb + (1. - mask)
             vis_feature_map = mask*vis_feature_map + (1.-mask)
 
         recon_rgb = recon_rgb.reshape(H, W, 3).cpu()
