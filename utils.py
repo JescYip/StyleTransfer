@@ -348,7 +348,6 @@ def convert_sdf_samples_to_ply(
 
 #     ds_rays_o = transform.transform_points(ds_rays[:,:3])
 #     ds_rays_d = transform.transform_points(ds_rays[:,3:])
-
 #     return torch.cat([rays_o, rays_d], dim=-1), torch.cat([ds_rays_o, ds_rays_d], dim=-1)
 
 
