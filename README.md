@@ -63,8 +63,8 @@ bash script/train_style.sh [GPU ID]
 ## Training on 360 Unbounded Scenes
 The code for training StyleRF on the Tanks&Temples dataset is available on the `360` branch. To access it, run `git checkout 360`.
 
-
 ## Acknowledgments
-This repo is heavily based on the [StyleRF]([https://github.com/apchenstu/TensoRF](https://github.com/Kunhao-Liu/StyleRF.git)). Thank them for sharing their amazing work!
+Our implementation builds upon the official [StyleRF](https://github.com/apchenstu/TensoRF) codebase. We thank the authors for releasing such a well-structured and effective framework.
+
 
 
