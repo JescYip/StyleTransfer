@@ -102,7 +102,6 @@ class BlenderDataset(Dataset):
     
     @torch.no_grad()
     def prepare_feature_data(self, encoder, save_dir='/content/features_cached'):
-        import os
         os.makedirs(save_dir, exist_ok=True)
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -116,7 +115,7 @@ class BlenderDataset(Dataset):
         for i in tqdm(range(frames_num)):
             save_path = os.path.join(save_dir, f'feature_{i:03d}.pt')
             if os.path.exists(save_path):
-                continue  # 已经缓存过就跳过
+                continue  
 
             rgb = self.all_rgbs_stack[i].to(device)
             rgb = rgb.permute(2, 0, 1).unsqueeze(0)  # [1, 3, H, W]

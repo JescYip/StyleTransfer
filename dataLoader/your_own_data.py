@@ -65,7 +65,7 @@ class YourOwnDataset(Dataset):
 
         img_eval_interval = 1 if self.N_vis < 0 else len(self.meta['frames']) // self.N_vis
         idxs = list(range(0, len(self.meta['frames']), img_eval_interval))
-        for i in tqdm(idxs, desc=f'Loading data {self.split} ({len(idxs)})'):#img_list:#
+        for i in tqdm(idxs, desc=f'Loading data {self.split} ({len(idxs)})'):
 
             frame = self.meta['frames'][i]
             pose = np.array(frame['transform_matrix']) @ self.blender2opencv
@@ -74,7 +74,6 @@ class YourOwnDataset(Dataset):
 
             image_path = os.path.join(self.root_dir, frame['file_path'])
 
-            # 自动补图像后缀
             if not os.path.exists(image_path):
                 for ext in ['.jpg', '.png', '.jpeg']:
                     if os.path.exists(image_path + ext):
@@ -105,15 +104,13 @@ class YourOwnDataset(Dataset):
             self.all_rays = torch.cat(self.all_rays, 0)  # (len(self.meta['frames])*h*w, 3)
             self.all_rgbs = torch.cat(self.all_rgbs, 0)  # (len(self.meta['frames])*h*w, 3)
             if len(self.all_masks) > 0:
-                self.all_masks = torch.cat(self.all_masks, 0)  # <- 加这一行
+                self.all_masks = torch.cat(self.all_masks, 0)  
    
-#             self.all_depth = torch.cat(self.all_depth, 0)  # (len(self.meta['frames])*h*w, 3)
         else:
             self.all_rays = torch.stack(self.all_rays, 0)  # (len(self.meta['frames]),h*w, 3)
             self.all_rgbs = torch.stack(self.all_rgbs, 0).reshape(-1,*self.img_wh[::-1], 3)  # (len(self.meta['frames]),h,w,3)
-            # self.all_masks = torch.stack(self.all_masks, 0).reshape(-1,*self.img_wh[::-1])  # (len(self.meta['frames]),h,w,3)
         self.focal = [self.focal_x, self.focal_y]  
-        self.render_path = self.poses.clone()  # 或者 .copy()
+        self.render_path = self.poses.clone()  
 
     def prepare_feature_data(self, encoder, save_dir='/content/features_cached'):
         import os
@@ -150,10 +147,8 @@ class YourOwnDataset(Dataset):
                 del rgb
                 torch.cuda.empty_cache()
 
-            # 为训练构造 [H*W, C] 并保存到 all_features
             self.all_features.append(feature.reshape(-1, feature.shape[-1]))
 
-        # 拼接所有帧的特征
         self.all_features = torch.cat(self.all_features, dim=0)  # [N_total_pixels, C]
         print(f'====> Feature extraction DONE. Total features: {self.all_features.shape}')
 

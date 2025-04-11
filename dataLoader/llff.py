@@ -9,6 +9,7 @@ from torchvision import transforms as T
 
 from .ray_utils import *
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def normalize(v):
     """Normalize a vector."""
@@ -256,10 +257,8 @@ class LLFFDataset(Dataset):
 
     @torch.no_grad()
     def prepare_feature_data(self, encoder, save_dir='/content/features_cached'):
-        import os
         os.makedirs(save_dir, exist_ok=True)
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         encoder = encoder.to(device)
         for name, module in encoder.named_children():
             module.to(device)

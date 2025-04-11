@@ -111,7 +111,7 @@ def reconstruction(args):
     ndc_ray = args.ndc_ray
 
     if args.patch_size > h_rays or args.patch_size > w_rays:
-        print(f"[WARNING] patch_size {args.patch_size} 太大，自动 fallback 为 min(H,W) = {min(h_rays, w_rays)}")
+        print(f"[WARNING] patch_size {args.patch_size} too large，automatically fallback to min(H,W) = {min(h_rays, w_rays)}")
         args.patch_size = min(h_rays, w_rays)
     patch_size = args.patch_size
 
@@ -149,22 +149,6 @@ def reconstruction(args):
 
     train_dataset.prepare_feature_data(tensorf.encoder)
 
-    feature_files = sorted(glob.glob('/content/features_cached/feature_*.pt'))
-    
-    '''
-    features_stack = [torch.load(f) for f in feature_files]
-    train_dataset.all_features_stack = torch.stack(features_stack, dim=0)
-    train_dataset.all_features = train_dataset.all_features_stack.reshape(-1, features_stack[0].shape[-1])
-
-    feature_files = sorted(glob.glob('/content/features_cached/feature_*.pt'))
-    features_stack = [torch.load(f) for f in feature_files]  # 每帧 [H, W, C]
-
-    train_dataset.all_features_stack = torch.stack(features_stack, dim=0)  # [N, H, W, C]
-    train_dataset.all_features = train_dataset.all_features_stack.reshape(-1, features_stack[0].shape[-1])
-    feature_files = sorted(glob.glob('/content/features_cached/feature_*.pt'))
-    train_dataset.feature_paths = feature_files  # ✅ 只记录路径，不加载内容
-    '''
-
     grad_vars = tensorf.get_optparam_groups_feature_mod(args.lr_init, args.lr_basis)
     if args.lr_decay_iters > 0:
         lr_factor = args.lr_decay_target_ratio**(1/args.lr_decay_iters)
@@ -187,7 +171,7 @@ def reconstruction(args):
         allrays, _ = tensorf.filtering_rays(allrays, torch.empty_like(allrays[:, :3]), bbox_only=True)
 
     trainingSampler = SimpleSampler(allrays.shape[0], args.batch_size)
-    frameSampler = iter(InfiniteSamplerWrapper(allrays_stack.size(0)))  # 每次迭代返回一帧
+    frameSampler = iter(InfiniteSamplerWrapper(allrays_stack.size(0)))  
 
 
     TV_weight_feature = args.TV_weight_feature
@@ -202,8 +186,8 @@ def reconstruction(args):
       frame_idx = next(frameSampler)
       rays_train = allrays_stack[frame_idx, ...].reshape(-1, 6).to(device)
       # ✅ 动态加载该帧的 .pt 特征
+
       features_train = torch.load(train_dataset.feature_paths[frame_idx]).to(device)
-      features_train = features_train.reshape(-1, features_train.shape[-1])
       
       start_h = np.random.randint(0, h_rays - patch_size + 1)
       start_w = np.random.randint(0, w_rays - patch_size + 1)
@@ -283,7 +267,6 @@ def reconstruction(args):
                                                         nrow=2, padding=0, normalize=False),
                                   global_step=iteration)
 
-      # ✅ 显存清理（关键）
       del rays_train, features_train, feature_map
       del recon_rgb, rgbs_train, img_enc, recon_rgb_enc
       torch.cuda.empty_cache()   

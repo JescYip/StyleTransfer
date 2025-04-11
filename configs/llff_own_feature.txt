@@ -1,4 +1,4 @@
-dataset_name = llff
+dataset_name = own_data
 datadir = /content/drive/MyDrive/data/nerf_data
 ckpt = ./log1/own_style/own_style.th
 expname = own_style

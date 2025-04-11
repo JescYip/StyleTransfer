@@ -12,6 +12,7 @@ def OctreeRender_trilinear_fast(rays, tensorf, chunk=4096, N_samples=-1, ndc_ray
     rgbs, alphas, depth_maps, weights, uncertainties = [], [], [], [], []
     features, accs = [], []
     s_mean_std_mat = None
+
     if style_img is not None:
         with torch.no_grad():
             style_feature = tensorf.encoder(normalize_vgg(style_img))
@@ -22,7 +23,8 @@ def OctreeRender_trilinear_fast(rays, tensorf, chunk=4096, N_samples=-1, ndc_ray
         rays_chunk = rays[chunk_idx * chunk:(chunk_idx + 1) * chunk].to(device)
         
         if render_feature:
-            feature_map, acc_map = tensorf.render_feature_map(rays_chunk, s_mean_std_mat=s_mean_std_mat, is_train=is_train, ndc_ray=ndc_ray, N_samples=N_samples)
+            feature_map, acc_map = tensorf.render_feature_map(rays_chunk, s_mean_std_mat=s_mean_std_mat, 
+                                                              is_train=is_train, ndc_ray=ndc_ray, N_samples=N_samples)
             features.append(feature_map)
             accs.append(acc_map)
         else:

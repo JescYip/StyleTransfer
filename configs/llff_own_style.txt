@@ -1,11 +1,11 @@
-dataset_name = llff
+dataset_name = own_data
 datadir = /content/drive/MyDrive/data/nerf_data
 ckpt = ./log1_feature/own_style/own_style.th
 expname = own_style
 basedir = ./log1_style
 
 nSamples = 300
-patch_size = 256
+patch_size = 120
 chunk_size = 2048
 
 content_weight = 1

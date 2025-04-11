@@ -3,9 +3,11 @@ import os, torch, argparse
 from dataLoader import dataset_dict
 from models.tensoRF import TensorVMSplit
 from renderer import evaluation_feature, OctreeRender_trilinear_fast
-from utils import denormalize_vgg
+from opt import config_parser
 
 if __name__ == '__main__':
+    args = config_parser()
+    print(args)
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='configs/nerf_synthetic_style.txt')
     parser.add_argument('--datadir', type=str, required=True, help='Path to dataset')
@@ -17,23 +19,20 @@ if __name__ == '__main__':
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # 加载模型
     ckpt = torch.load(args.ckpt, map_location=device)
     kwargs = ckpt['kwargs']
     kwargs.update({'device': device})
     tensorf = TensorVMSplit(**kwargs)
     tensorf.load(ckpt)
     tensorf.eval()
+    tensorf.change_to_feature_mod([48, 48, 48], device)
 
-    # 加载测试数据
     dataset = dataset_dict['blender']
     test_dataset = dataset(args.datadir, split='test', downsample=1.0, is_stack=True)
 
-    # 输出路径
     savePath = os.path.join('./renders', args.expname)
     os.makedirs(savePath, exist_ok=True)
 
-    # 执行渲染
     evaluation_feature(
         test_dataset=test_dataset,
         tensorf=tensorf,
@@ -48,4 +47,4 @@ if __name__ == '__main__':
         device=device
     )
 
-    print(f"\n✅ Rendering complete! Results saved to: {savePath}")
+    print(f"\n Rendering complete! Results saved to: {savePath}")
