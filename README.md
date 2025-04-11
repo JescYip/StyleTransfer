@@ -64,7 +64,4 @@ bash script/train_style.sh [GPU ID]
 The code for training StyleRF on the Tanks&Temples dataset is available on the `360` branch. To access it, run `git checkout 360`.
 
 ## Acknowledgments
-Our implementation builds upon the official [StyleRF]((https://github.com/Kunhao-Liu/StyleRF)) codebase. We thank the authors for releasing such a well-structured and effective framework.
-
-
-
+Our implementation builds upon the official [StyleRF](https://github.com/Kunhao-Liu/StyleRF) codebase. We thank the authors for releasing such a well-structured and effective framework.
