@@ -1,11 +1,3 @@
-# [*CVPR 2023*] StyleRF: Zero-shot 3D Style Transfer of Neural Radiance Fields
-## [Project page](https://kunhao-liu.github.io/StyleRF/) |  [Paper](https://arxiv.org/abs/2303.10598)
-
-This repository contains a pytorch implementation for the paper: [StyleRF: Zero-shot 3D Style Transfer of Neural Radiance Fields](https://arxiv.org/abs/2303.10598). StyleRF is an innovative 3D style transfer technique that achieves superior 3D stylization quality with precise geometry reconstruction and it can generalize to various new styles in a zero-shot manner. 
-
-![teaser](https://kunhao-liu.github.io/StyleRF/resources/teaser.png)
-
----
 ## Installation
 > Tested on Ubuntu 20.04 + Pytorch 1.12.1
 
@@ -25,16 +17,6 @@ Please put the datasets in `./data`. You can put the datasets elsewhere if you m
 * [llff](https://drive.google.com/drive/folders/128yBriW1IG_3NJ5Rp7APSTZsJqdJdfc1)
 ### Style image dataset
 * [WikiArt](https://www.kaggle.com/datasets/ipythonx/wikiart-gangogh-creating-art-gan)
-
-## Quick Start
-We provide some trained checkpoints in: [StyleRF checkpoints](https://drive.google.com/drive/folders/1nF9-6lTIhktG5JjNvnmdYOo1LTvtK7Dw?usp=share_link)
-
-Then modify the following attributes in `scripts/test_style.sh`:
-* `--config`: choose `configs/llff_style.txt` or `configs/nerf_synthetic_style.txt` according to which type of dataset is being used
-* `--datadir`: dataset's path
-* `--ckpt`: checkpoint's path
-* `--style_img`: reference style image's path
-
 
 To generate stylized novel views:
 ```
