@@ -65,17 +65,6 @@ The code for training StyleRF on the Tanks&Temples dataset is available on the `
 
 
 ## Acknowledgments
-This repo is heavily based on the [TensoRF](https://github.com/apchenstu/TensoRF). Thank them for sharing their amazing work!
+This repo is heavily based on the [StyleRF]([https://github.com/apchenstu/TensoRF](https://github.com/Kunhao-Liu/StyleRF.git)). Thank them for sharing their amazing work!
 
-## Citation
-If you find our code or paper helps, please consider citing:
-```
-@inproceedings{liu2023stylerf,
-  title={StyleRF: Zero-shot 3D Style Transfer of Neural Radiance Fields},
-  author={Liu, Kunhao and Zhan, Fangneng and Chen, Yiwen and Zhang, Jiahui and Yu, Yingchen and El Saddik, Abdulmotaleb and Lu, Shijian and Xing, Eric P},
-  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
-  pages={8338--8348},
-  year={2023}
-}
-```
 
