@@ -56,16 +56,41 @@ class InfiniteSamplerWrapper(torch.utils.data.sampler.Sampler):
     def __len__(self):
         return 2 ** 31
 
+import torch
+import torch.nn.functional as F
+
 def contrastive_loss(z1, z2, temperature=0.07):
-    z1 = F.normalize(z1, dim=-1)
-    z2 = F.normalize(z2, dim=-1)
+    """
+    Symmetric InfoNCE Loss (SimCLR-style).
+    Args:
+        z1: Tensor of shape (B, D) — features of original.
+        z2: Tensor of shape (B, D) — features of augmented.
+        temperature: Scaling factor.
+    Returns:
+        Scalar loss.
+    """
+    device = z1.device
     batch_size = z1.shape[0]
-    representations = torch.cat([z1, z2], dim=0)
-    similarity_matrix = torch.matmul(representations, representations.T) / temperature
-    labels = torch.cat([torch.arange(batch_size) + batch_size, torch.arange(batch_size)], dim=0).to(device)
-    mask = ~torch.eye(batch_size * 2, device=device).bool()
-    similarity_matrix = similarity_matrix.masked_select(mask).view(batch_size * 2, -1)
-    loss = F.cross_entropy(similarity_matrix, labels)
+
+    # Normalize
+    z1 = F.normalize(z1, dim=1)
+    z2 = F.normalize(z2, dim=1)
+
+    representations = torch.cat([z1, z2], dim=0)  # [2B, D]
+    similarity = torch.matmul(representations, representations.T)  # [2B, 2B]
+    similarity = similarity / temperature
+
+    # Mask to remove similarity with self
+    mask = torch.eye(2 * batch_size, device=device).bool()
+    similarity.masked_fill_(mask, float('-inf'))
+
+    # Labels: positives are at fixed offset
+    labels = torch.cat([
+        torch.arange(batch_size, 2 * batch_size),
+        torch.arange(0, batch_size)
+    ]).to(device)
+
+    loss = F.cross_entropy(similarity, labels)
     return loss
 
 @torch.no_grad()
@@ -176,7 +201,7 @@ def reconstruction(args):
             rgb_aug = TF.hflip(rgbs_patch)
             enc_aug = tensorf.encoder(normalize_vgg(rgb_aug))
             z1 = recon_rgb_enc.relu3_1.view(recon_rgb_enc.relu3_1.shape[0], -1)
-            z2 = enc_aug.relu3_1.view(enc_aug.relu3_1.shape[0], -1)
+            z2 = enc_aug.relu3_1.reshape(enc_aug.relu3_1.shape[0], -1)
             cl_loss = contrastive_loss(z1, z2)
 
             total_loss = pixel_loss + feature_loss + 0.5 * cl_loss

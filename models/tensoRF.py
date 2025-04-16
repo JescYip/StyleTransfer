@@ -231,7 +231,7 @@ class TensorVMSplit(TensorBase):
             if s_mean_std_mat is not None:
                 valid_features = self.stylizer.transform_content_3D(valid_features.transpose(0,1)[None,...])
                 valid_features = valid_features.squeeze(0).transpose(0,1)
-
+            valid_features = valid_features.to(features.dtype)
             features[app_mask] = valid_features
 
         feature_map = torch.sum(weight[..., None] * features, -2)
