@@ -12,7 +12,7 @@ style_weight = 20
 
 rm_weight_mask_thre = 0.01
 
-n_iters = 25000
+n_iters = 10000
 
 n_lamb_sigma = [16,16,16]
 n_lamb_sh = [48,48,48]
